@@ -112,7 +112,7 @@ const Landing = () => {
 
       {/* Footer */}
       <footer className="relative z-10 text-center py-8 text-gray-500 text-sm border-t border-white/5">
-        <p>&copy; {new Date().getFullYear()} ScrMail. Built with ❤️ using MERN Stack.</p>
+        <p>&copy; {new Date().getFullYear()} ScrMail.</p>
       </footer>
     </div>
   );
