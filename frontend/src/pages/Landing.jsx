@@ -2,8 +2,10 @@ import { FcGoogle } from 'react-icons/fc';
 import { HiOutlineMail, HiOutlineSearch, HiOutlineClock } from 'react-icons/hi';
 
 const Landing = () => {
+  const API_URL = import.meta.env.VITE_API_URL || '';
+
   const handleGoogleLogin = () => {
-    window.location.href = '/auth/google';
+    window.location.href = `${API_URL}/auth/google`;
   };
 
   return (

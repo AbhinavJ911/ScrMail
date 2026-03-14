@@ -13,6 +13,12 @@ const historyRoutes = require('./routes/history');
 
 const app = express();
 
+// Trust proxy for Render/Heroku (required for secure cookies behind reverse proxy)
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
 // Connect to MongoDB
 connectDB();
 
@@ -38,8 +44,8 @@ app.use(
     cookie: {
       maxAge: 24 * 60 * 60 * 1000, // 1 day
       httpOnly: true,
-      secure: false, // Set to true in production with HTTPS
-      sameSite: 'lax',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
     },
   })
 );

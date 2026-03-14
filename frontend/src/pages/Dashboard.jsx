@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../utils/api';
 import Navbar from '../components/Navbar';
 import SearchBar from '../components/SearchBar';
 import EmailCard from '../components/EmailCard';
@@ -21,7 +21,7 @@ const Dashboard = () => {
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get('/api/history', { withCredentials: true });
+      const res = await API.get('/api/history');
       setHistory(res.data);
     } catch (err) {
       console.error('Failed to fetch history:', err);
@@ -38,16 +38,10 @@ const Dashboard = () => {
 
     try {
       // Save search to history
-      await axios.post(
-        '/api/history',
-        { keyword: query },
-        { withCredentials: true }
-      );
+      await API.post('/api/history', { keyword: query });
 
       // Search emails
-      const res = await axios.get(`/api/email/search?q=${encodeURIComponent(query)}`, {
-        withCredentials: true,
-      });
+      const res = await API.get(`/api/email/search?q=${encodeURIComponent(query)}`);
 
       setEmails(res.data.emails);
       setTotalResults(res.data.total);
@@ -64,7 +58,7 @@ const Dashboard = () => {
 
   const handleDeleteHistory = async (id) => {
     try {
-      await axios.delete(`/api/history/${id}`, { withCredentials: true });
+      await API.delete(`/api/history/${id}`);
       setHistory(history.filter((h) => h._id !== id));
     } catch (err) {
       console.error('Failed to delete history:', err);
