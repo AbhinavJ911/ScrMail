@@ -50,6 +50,7 @@ const connectRedis = () => {
     redisClient.on('ready', () => {
       isRedisConnected = true;
       logger.info('✅ Redis ready to accept commands');
+      initEmailIndex();
     });
 
     redisClient.on('error', (err) => {
@@ -91,6 +92,39 @@ const disconnectRedis = async () => {
       logger.info('Redis disconnected gracefully');
     } catch (err) {
       logger.error(`Redis disconnect error: ${err.message}`);
+    }
+  }
+};
+
+/**
+ * Initialize RediSearch index for emails.
+ */
+const initEmailIndex = async () => {
+  if (!redisClient) return;
+  try {
+    await redisClient.call('FT.INFO', 'idx:emails');
+    logger.debug('✅ RediSearch index "idx:emails" already exists.');
+  } catch (error) {
+    if (error.message.includes('Unknown Index name')) {
+      logger.info('⚠️ RediSearch index "idx:emails" not found, creating...');
+      try {
+        await redisClient.call(
+          'FT.CREATE', 'idx:emails',
+          'ON', 'HASH',
+          'PREFIX', '1', 'email:',
+          'SCHEMA',
+          'userId', 'TAG',
+          'subject', 'TEXT',
+          'snippet', 'TEXT', 'body', 'TEXT',
+          'id', 'TAG',
+          'date', 'TEXT'
+        );
+        logger.info('✅ RediSearch index "idx:emails" created successfully.');
+      } catch (createErr) {
+        logger.error(`❌ Failed to create RediSearch index: ${createErr.message}`);
+      }
+    } else {
+      logger.error(`❌ Error checking RediSearch index: ${error.message}`);
     }
   }
 };
@@ -169,4 +203,5 @@ module.exports = {
   setCache,
   deleteCache,
   deleteCachePattern,
+  initEmailIndex,
 };

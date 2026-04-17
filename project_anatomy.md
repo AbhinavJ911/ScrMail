@@ -13,7 +13,7 @@ This document breaks down exactly how the modernized ScrMail platform works from
 * **Node.js**: The asynchronous Python equivalent for JS, allowing server operations.
 
 ### The Specialized Tools & Upgrades
-* **Redis (Upstash / ioredis)**: An in-memory data store. We implemented Redis to cache heavy payload responses (Gmail API queries) for 10 minutes. If a user queries the same keyword, it bypasses Google entirely and loads instantly from RAM!
+* **RediSearch (Upstash / Redis Stack)**: An in-memory data store turned search engine. We transitioned from generic key-value caching to full-text indexing. When a user queries a keyword, the backend executes native `FT.SEARCH` queries against explicitly mapped email Hashes loaded in RAM, bypassing Google quotas entirely!
 * **AES-256-GCM Encryption (Node Crypto)**: Google Access Tokens grant literal read-access to user emails. Storing them in plain-text is a critical vulnerability. We implemented native Node `crypto` algorithms to automatically encrypt all tokens using 256-bit Hex keys *before* they touch MongoDB.
 * **Express Rate Limit (rate-limit-redis)**: Distributed traffic policing. Rate-limit tracks request velocities using user IDs and IP addresses stored globally across Redis clusters. It caps Auth attempts (10/min), general APIs (100/min), and Search endpoints (30/min).
 * **Winston & Morgan Logs**: Enterprise-grade structured logging instead of `console.log`.
@@ -54,17 +54,17 @@ The project maintains a scalable structural barrier separating infrastructure lo
 5. **[New]** The `User.js` model `pre-save` hook triggers. It generates a random 16-byte IV, mathematically encrypts the token via AES-256-GCM utilizing the `process.env.ENCRYPTION_KEY`, attaches an authentication tag, and saves the cypher-text in MongoDB.
 6. A persistent session starts successfully.
 
-### Flow 2: Searching Emails (Cached)
+### Flow 2: Searching Emails (RediSearch)
 1. User types "Interview" & requests `/api/email/search?q=Interview`.
 2. **[New]** The request hits the `searchLimiter` middleware. It checks Redis to ensure this user hasn't made 30 searches in the last 60 seconds.
 3. Next, the Joi Validator checks if the `q` query string actually exists.
-4. The router uses `crypto` to hash the word "Interview" to check `cache:email:{UserID}:{MD5Hash}` in Redis.
-5. **Cache Miss**: The server pulls the encrypted token from MongoDB.
+4. **Cache Check**: The router runs an `FT.SEARCH` query directly against our `idx:emails` RediSearch index using `@userId:{userId} %Interview%`.
+5. **Cache Miss**: If results aren't found locally, the server pulls the encrypted token from MongoDB.
 6. **[New]** The route runs `getDecryptedAccessToken()` to unmask the token, applies it to `googleapis`, and fires the `gmail.users.messages.list` request.
-7. Google returns 50 emails. The server loops the data map asynchronously and creates the JSON result array.
-8. **[New]** Before returning to the user, the server writes this massive payload into Redis with an `EX 600` (10-minute expiration).
+7. Google returns 50 emails. The server loops the data map asynchronously and maps the required fields.
+8. **[RediSearch Indexing]** Before returning to the user, the server writes each email explicitly into Redis using `HSET` individually, which natively maps it into the RediSearch index with a 10-minute expiration.
 9. Express utilizes `ApiResponse.success` and transmits the data via Vercel to the browser.
-*(If the user searches "Interview" 2 minutes later, Step 4 triggers a **Cache Hit**, instantly retrieving the huge array from Redis, using 0ms of CPU parsing and 0 Google API quota usage!)*
+*(If the user searches "Interview" 2 minutes later, Step 4 triggers a **RediSearch Hit**, fetching results directly from RAM via `FT.SEARCH`, using 0ms of CPU parsing and 0 Google API quota usage!)*
 
 ---
 

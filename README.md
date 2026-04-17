@@ -16,7 +16,7 @@ A production-grade Gmail search platform built with the MERN stack, featuring **
 - 🎨 **Modern Dark UI** — Glassmorphism design with smooth animations
 
 ### Advanced Features (v2.0)
-- ⚡ **Redis Caching** — Email search results cached for 10 min, search history cached for 5 min
+- ⚡ **RediSearch Indexing** — Emails are indexed natively within Redis via FT.CREATE and FT.SEARCH, drastically improving cache retrieval efficiency
 - 🔒 **AES-256-GCM Encryption** — OAuth tokens encrypted at rest in the database
 - 🛡️ **Rate Limiting** — Redis-backed API rate limiting (100 req/min general, 30/min search)
 - 📊 **Structured Logging** — Winston-based logging with dev/production formats
@@ -35,7 +35,7 @@ A production-grade Gmail search platform built with the MERN stack, featuring **
 | Frontend | React.js, Vite, Tailwind CSS |
 | Backend | Node.js, Express.js |
 | Database | MongoDB Atlas (Mongoose) |
-| Caching | Redis (Upstash / Redis Cloud) |
+| Search Index | RediSearch (Upstash / Redis Stack Server) |
 | Auth | Google OAuth 2.0 (Passport.js) |
 | Email | Gmail API |
 | Encryption | AES-256-GCM (Node.js crypto) |
@@ -54,7 +54,7 @@ ScrMail/
 │   ├── config/
 │   │   ├── db.js              # MongoDB connection with event monitoring
 │   │   ├── passport.js        # Google OAuth strategy with encrypted tokens
-│   │   └── redis.js           # Redis client with TLS, fallback, cache helpers
+│   │   └── redis.js           # Redis client with TLS, fallback, and FT.CREATE RediSearch INIT logic
 │   ├── middleware/
 │   │   ├── auth.js            # Authentication guard middleware
 │   │   ├── errorHandler.js    # Global error handler (dev/prod modes)
@@ -65,7 +65,7 @@ ScrMail/
 │   │   └── SearchHistory.js   # Search history model
 │   ├── routes/
 │   │   ├── auth.js            # OAuth routes with rate limiting
-│   │   ├── email.js           # Gmail search with Redis caching
+│   │   ├── email.js           # RediSearch integration via FT.SEARCH and HSET inserts
 │   │   └── history.js         # Search history CRUD with caching
 │   ├── utils/
 │   │   ├── encryption.js      # AES-256-GCM encrypt/decrypt functions

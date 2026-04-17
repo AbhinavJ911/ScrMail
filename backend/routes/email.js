@@ -4,7 +4,7 @@ const { google } = require('googleapis');
 const ensureAuth = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validator');
 const { searchLimiter } = require('../middleware/rateLimiter');
-const { getCache, setCache } = require('../config/redis');
+const { getCache, setCache, getRedisClient } = require('../config/redis');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -46,18 +46,40 @@ router.get(
       const { q } = req.query;
       const userId = req.user._id.toString();
 
-      // ── Check Redis cache first ──
+      // ── Check Redis cache (RediSearch) first ──
       const cacheKey = getSearchCacheKey(userId, q);
-      const cachedResult = await getCache(cacheKey);
+      const hasQueried = await getCache(cacheKey);
+      const redisClient = getRedisClient();
 
-      if (cachedResult) {
-        logger.debug(`Cache HIT for search: "${q}" (user: ${req.user.email})`);
-        return ApiResponse.success(res, cachedResult, 'Emails retrieved from cache', 200, {
-          cached: true,
-        });
+      if (hasQueried && redisClient) {
+        try {
+          let searchQ = `@userId:{${userId}}`;
+          if (q) searchQ += ` ${q.trim()}`;
+          // Execute RediSearch
+          const searchResult = await redisClient.call('FT.SEARCH', 'idx:emails', searchQ, 'LIMIT', '0', '50');
+          
+          if (searchResult && searchResult[0] > 0) {
+            const count = searchResult[0];
+            const emails = [];
+            for (let i = 1; i < searchResult.length; i += 2) {
+              const fields = searchResult[i + 1];
+              const emailObj = { id: searchResult[i].replace(`email:${userId}:`, '') };
+              for (let j = 0; j < fields.length; j += 2) {
+                emailObj[fields[j]] = fields[j+1];
+              }
+              emails.push(emailObj);
+            }
+            logger.debug(`RediSearch HIT for search: "${q}" (user: ${req.user.email}), found ${count} emails`);
+            return ApiResponse.success(res, { emails, total: emails.length }, 'Emails retrieved from RediSearch index', 200, {
+              cached: true,
+            });
+          }
+        } catch (err) {
+          logger.error(`RediSearch error: ${err.message}`);
+        }
       }
 
-      logger.debug(`Cache MISS for search: "${q}" (user: ${req.user.email})`);
+      logger.debug(`RediSearch MISS for search: "${q}" (user: ${req.user.email})`);
 
       // ── Get decrypted tokens ──
       const accessToken = req.user.getDecryptedAccessToken();
@@ -139,8 +161,29 @@ router.get(
         total: messageList.data.resultSizeEstimate || emails.length,
       };
 
-      // ── Cache the results in Redis (10 minutes) ──
-      await setCache(cacheKey, result, 600);
+      // ── Cache the results using RediSearch (10 minutes) ──
+      if (redisClient) {
+        for (const email of emails) {
+          const hashKey = `email:${userId}:${email.id}`;
+          const flatObj = [
+            'userId', userId,
+            'subject', email.subject || '',
+            'date', email.date || '',
+            'snippet', email.snippet || '',
+            'body', email.body || '',
+            'from', email.from || ''
+          ];
+          const stringifiedFlatObj = flatObj.map((val) => String(val || ''));
+          try {
+            await redisClient.hset(hashKey, ...stringifiedFlatObj);
+            await redisClient.expire(hashKey, 600);
+          } catch (hashErr) {
+            logger.error(`Failed to HSET email ${email.id}: ${hashErr.message}`);
+          }
+        }
+        await setCache(cacheKey, true, 600); // Flag this keyword as cached
+      }
+      
       logger.info(`Email search completed: "${q}" → ${emails.length} results (user: ${req.user.email})`);
 
       return ApiResponse.success(res, result, `Found ${result.total} emails`, 200, {
