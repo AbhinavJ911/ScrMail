@@ -22,7 +22,7 @@ const Dashboard = () => {
   const fetchHistory = async () => {
     try {
       const res = await API.get('/api/history');
-      setHistory(res.data);
+      setHistory(res.data.data);
     } catch (err) {
       console.error('Failed to fetch history:', err);
     }
@@ -43,8 +43,8 @@ const Dashboard = () => {
       // Search emails
       const res = await API.get(`/api/email/search?q=${encodeURIComponent(query)}`);
 
-      setEmails(res.data.emails);
-      setTotalResults(res.data.total);
+      setEmails(res.data.data.emails);
+      setTotalResults(res.data.data.total);
 
       // Refresh history
       fetchHistory();

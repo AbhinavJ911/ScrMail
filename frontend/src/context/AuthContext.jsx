@@ -14,7 +14,7 @@ export const AuthProvider = ({ children }) => {
   const checkAuth = async () => {
     try {
       const res = await API.get('/auth/current-user');
-      setUser(res.data);
+      setUser(res.data.data);
     } catch (error) {
       setUser(null);
     } finally {
