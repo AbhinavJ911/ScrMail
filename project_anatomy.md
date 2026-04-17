@@ -1,125 +1,86 @@
-# 📖 ScrMail — Complete Project Architecture & Data Flow
+# 📖 ScrMail (v2.0) — Advanced Project Architecture & Data Flow
 
-This document breaks down exactly how the ScrMail platform works from start to finish. It is designed as a study guide to help you understand every piece of the **MERN** stack and how they all talk to each other.
+This document breaks down exactly how the modernized ScrMail platform works from start to finish. It serves as an authoritative study guide covering the Advanced **MERN** stack implementations, Redis caching, AES-256 encryption, and professional backend architecture.
 
 ---
 
-## 1. The Technology Stack (MERN+)
-
-ScrMail is built using the **MERN** stack, plus a few specialized tools for authentication and third-party APIs.
+## 1. The Technology Stack (Advanced MERN)
 
 ### The Foundation
-* **MongoDB (Atlas)**: Our NoSQL Cloud Database. We use this to permanently store user accounts and their past search keywords.
-* **Express.js**: Our Backend Web Framework. It listens for HTTP requests (like `GET` or `POST`) from the frontend and routes them to the correct logic.
-* **React.js (Vite)**: Our Frontend UI Library. It builds the interactive user interface (buttons, input fields, modals). We used *Vite* to bundle the React app because it is much faster than Create React App.
-* **Node.js**: Our Backend Runtime Environment. It allows us to write server-side code using JavaScript.
+* **MongoDB (Atlas)**: Our NoSQL Cloud Database. We use this to permanently store user accounts and search history.
+* **Express.js**: Our robust Backend Web Framework. It listens for HTTP requests, applies advanced middleware (rate limiting, validation), and routes logic.
+* **React.js (Vite)**: Our Frontend UI Library utilizing rapid Vite build compilation.
+* **Node.js**: The asynchronous Python equivalent for JS, allowing server operations.
 
-### The Specialized Tools
-* **Tailwind CSS**: A utility-first CSS framework. It allows us to style the React components rapidly using class names (e.g., `flex`, `text-center`, `bg-blue-500`) directly inside the JSX instead of writing custom CSS files.
-* **Passport.js**: An authentication middleware for Node.js. We use the *Google OAuth 2.0 Strategy* to let users log in with their Google accounts without us having to manage passwords.
-* **express-session**: Creates a persistent session cookie in the user's browser after they log in, keeping them authenticated across different pages.
-* **connect-mongo**: Saves those `express-session` cookies directly into our MongoDB database so that if our backend server restarts, users don't get logged out automatically.
-* **Gmail API (googleapis)**: Google's official Node.js library that allows our backend to act on behalf of the user to search their inbox and retrieve email text.
-* **React Router**: Frontend routing library that lets users navigate between the `/` (Landing) and `/dashboard` (Dashboard) pages without the browser having to reload.
-* **Axios**: An HTTP client used in our React frontend to send asynchronous API requests to our Express backend.
+### The Specialized Tools & Upgrades
+* **Redis (Upstash / ioredis)**: An in-memory data store. We implemented Redis to cache heavy payload responses (Gmail API queries) for 10 minutes. If a user queries the same keyword, it bypasses Google entirely and loads instantly from RAM!
+* **AES-256-GCM Encryption (Node Crypto)**: Google Access Tokens grant literal read-access to user emails. Storing them in plain-text is a critical vulnerability. We implemented native Node `crypto` algorithms to automatically encrypt all tokens using 256-bit Hex keys *before* they touch MongoDB.
+* **Express Rate Limit (rate-limit-redis)**: Distributed traffic policing. Rate-limit tracks request velocities using user IDs and IP addresses stored globally across Redis clusters. It caps Auth attempts (10/min), general APIs (100/min), and Search endpoints (30/min).
+* **Winston & Morgan Logs**: Enterprise-grade structured logging instead of `console.log`.
+* **Helmet.js & Joi**: Helmet attaches HTTP security headers (XSS protections, strict-transport config), while Joi forces strict validation parsing on incoming JSON requests.
+* **Passport.js & express-session**: Handles our deeply integrated Google OAuth 2.0 flow using encrypted persistent cookie sessions mapped via MongoDB or Redis.
+* **Axios**: The HTTP client interfacing the API with `withCredentials: true` across cross-origin servers.
 
 ---
 
-## 2. Project File Structure & Architecture
+## 2. Updated Project File Structure
 
-The project is split into two entirely separate folders that run on two different ports during development, but communicate over HTTP.
+The project maintains a scalable structural barrier separating infrastructure logic from routing.
 
 ### Backend (`/backend`)
-Runs on `http://localhost:5000` (or Render in production).
-* **`server.js`**: The main entry point. It sets up Express, connects to MongoDB, configures the session cookie, initializes Passport, and mounts all API routes.
-* **`config/db.js`**: Connects to the MongoDB Atlas cluster using Mongoose.
-* **`config/passport.js`**: Contains the logic for the Google Login flow. It tells Google what permissions we want (`profile`, `email`, `gmail.readonly`) and specifies what to do when Google successfully returns a user's data.
-* **`models/`**: Mongoose schemas defining how data looks in MongoDB (`User.js` and `SearchHistory.js`).
-* **`routes/`**: The actual API endpoints our frontend calls (`auth.js` for login/logout, `email.js` for the Gmail API search, `history.js` for saving past searches).
-* **`middleware/auth.js`**: A tiny piece of code that runs before protected routes to securely check: *"Is this user actually logged in right now?"*
-
-### Frontend (`/frontend`)
-Runs on `http://localhost:5173` (or Vercel in production).
-* **`src/main.jsx` & `App.jsx`**: The React entry points. `App.jsx` handles all the page routing.
-* **`src/context/AuthContext.jsx`**: Global state management. It checks if the user is logged in as soon as the site loads, and stores the user's data (name, profile picture) so any component (like the Navbar or Dashboard) can easily access it.
-* **`src/pages/`**: The main screen layouts (`Landing.jsx` and `Dashboard.jsx`).
-* **`src/components/`**: Reusable UI pieces (`Navbar.jsx`, `SearchBar.jsx`, `EmailCard.jsx`, `SearchHistory.jsx`).
-* **`src/utils/api.js`**: A centralized Axios instance. This is configured to automatically attach cookies (`withCredentials: true`) to every request, and determines if it should hit localhost or the live Render URL.
+* **`server.js`**: The foundational entry point. Configures global CORS, hooks up session layers, binds rate-limiters, mounts routing, and includes Graceful Shutdown hooks for Redis/Mongo socket closure on termination.
+* **`config/`**:
+  * **`redis.js`**: The Redis factory. Features a smart fallback mechanism (detects if Upstash/Redis is offline and safely allows the application to run without caching instead of crashing).
+  * **`db.js`**: Connects strictly to MongoDB Atlas.
+  * **`passport.js`**: Defines the Google Strategy and intelligently utilizes the `getDecryptedAccessToken` methods seamlessly.
+* **`models/` (Data schemas)**:
+  * **`User.js`**: Employs a Mongoose `pre-save hook`. Anytime a user model is modified, this hook intercepts the payload, mathematically encrypts the `accessToken`, and allows the database persistence.
+* **`middleware/`**:
+  * **`rateLimiter.js`**: Instantiates distributed protection partitions restricting brute-force attacks.
+  * **`errorHandler.js`**: Our global `catch-all`. Standardizes 500/400 errors, strips stack traces away in production preventing intelligence leaks, and outputs formatted JSON.
+* **`utils/`**:
+  * **`ApiResponse.js`**: Standardizes all successful responses into a unified `{ success, statusCode, message, data }` format, solving frontend unboxing fragmentation.
+  * **`encryption.js`**: The mathematical core utilizing initialization vectors (IVs) and auth tags.
 
 ---
 
-## 3. The User Journey: Step-by-Step Data Flow
+## 3. Advanced User Journey: The Data Flow
 
-Here is exactly what happens under the hood when a user interacts with the app.
+### Flow 1: Secure Authentication
+1. **User clicks "Sign in with Google"** -> Routes to backend -> Redirects to Google.
+2. User grants `gmail.readonly` permissions to ScrMail.
+3. Google calls back to `/auth/google/callback` supplying the temporary `code`.
+4. Passport resolves the `code` into an **Access Token**.
+5. **[New]** The `User.js` model `pre-save` hook triggers. It generates a random 16-byte IV, mathematically encrypts the token via AES-256-GCM utilizing the `process.env.ENCRYPTION_KEY`, attaches an authentication tag, and saves the cypher-text in MongoDB.
+6. A persistent session starts successfully.
 
-### Flow 1: User Log In
-1. **User clicks "Sign in with Google"** on the Landing page.
-2. The frontend triggers `window.location.href = '/auth/google'`. This redirects the browser completely away from React to our Backend Express server.
-3. Express hits `passport.authenticate('google')` which redirects the user again to **accounts.google.com**.
-4. The user clicks their account and grants permissions.
-5. Google redirects the user back to our `/auth/google/callback` route, passing a special authorization code in the URL.
-6. **Passport.js** securely exchanges that code for the user's Google Profile (Name, Email, Picture) and **Tokens** (Access Token & Refresh Token).
-7. We save the user's details and Tokens in our **MongoDB Users Collection**. We *must* save the Tokens because we need them later to search their emails.
-8. Express creates a Session Cookie in the browser and redirects the user back to the React `/dashboard`.
-
-### Flow 2: Accessing the Dashboard (Protected Route)
-1. The user hits the React `/dashboard`.
-2. Before rendering the page, React checks the `AuthContext`.
-3. The `AuthContext` makes a quiet background GET request to backend `/auth/current-user`.
-4. Our Axios setup automatically attaches the Session Cookie to that request.
-5. Express verifies the cookie, realizes the user is logged in, and returns the user's name and picture. (If the cookie was missing/invalid, it would return a 401 error, and React would kick them back to the Landing page).
-6. React renders the Dashboard!
-
-### Flow 3: Searching Emails (The Core Feature)
-1. User types "Interview" in the SearchBar and hits Enter.
-2. React makes a POST request to `/api/history` to save the word "Interview" into MongoDB.
-3. React makes a GET request to `/api/email/search?q=Interview`.
-4. The Backend Express router (`email.js`) receives the request. It uses the Session Cookie to identify exactly which user is asking for this.
-5. Express grabs the user's saved **Access Token** from MongoDB.
-6. Express uses the `googleapis` library. It says *"Hey Google, I am looking for all emails containing 'Interview'. Here is the Access Token to prove I am allowed to read this user's inbox."* (`gmail.users.messages.list`)
-7. Google replies with a list of matching Email IDs.
-8. Express loops through those IDs, asking Google for the full details of each one (Sender, Date, Subject, Snippet, Full HTML Body). (`gmail.users.messages.get`)
-9. Once all emails are retrieved, Express sanitizes the data into a clean JSON array and sends it back to the React frontend.
-10. React receives the array, updates its `emails` State, and renders the `EmailCard` components on the screen!
+### Flow 2: Searching Emails (Cached)
+1. User types "Interview" & requests `/api/email/search?q=Interview`.
+2. **[New]** The request hits the `searchLimiter` middleware. It checks Redis to ensure this user hasn't made 30 searches in the last 60 seconds.
+3. Next, the Joi Validator checks if the `q` query string actually exists.
+4. The router uses `crypto` to hash the word "Interview" to check `cache:email:{UserID}:{MD5Hash}` in Redis.
+5. **Cache Miss**: The server pulls the encrypted token from MongoDB.
+6. **[New]** The route runs `getDecryptedAccessToken()` to unmask the token, applies it to `googleapis`, and fires the `gmail.users.messages.list` request.
+7. Google returns 50 emails. The server loops the data map asynchronously and creates the JSON result array.
+8. **[New]** Before returning to the user, the server writes this massive payload into Redis with an `EX 600` (10-minute expiration).
+9. Express utilizes `ApiResponse.success` and transmits the data via Vercel to the browser.
+*(If the user searches "Interview" 2 minutes later, Step 4 triggers a **Cache Hit**, instantly retrieving the huge array from Redis, using 0ms of CPU parsing and 0 Google API quota usage!)*
 
 ---
 
-## 4. Database Models (MongoDB)
+## 4. Encryption Architecture Deep Dive
 
-Our database is lean and efficient. We only have two collections:
-
-### **User Document**
-```json
-{
-  "_id": "64f3a...29b",
-  "googleId": "10492850938450",
-  "name": "Abhinav J",
-  "email": "abhinav@gmail.com",
-  "profilePicture": "https://lh3.googleusercontent.com/a/...",
-  "accessToken": "ya29.a0AfB_...", // The key we use to read their Gmail
-  "refreshToken": "1//0g...",       // Used to get a new Access Token when the old one expires
-  "createdAt": "2026-03-14T08:00:00Z"
-}
-```
-
-### **Search History Document**
-```json
-{
-  "_id": "84c2f...10d",
-  "userId": "64f3a...29b",  // Links directly back to the User who made the search
-  "keyword": "Interview",
-  "timestamp": "2026-03-14T15:30:00Z"
-}
-```
+Why `AES-256-GCM`?
+- **Symmetric**: The same 64-character hex key encrypts and decrypts (ideal for Node servers).
+- **Authenticated**: GCM validates the cyphertext mathematically. If an attacker modifies even 1 character in the database, the decryption process dynamically throws an error preventing blind injection bypasses.
+- **Dynamic IV**: A randomly generated Initialization Vector is built globally for *every* individual encryption. This means even if two users have the exact same Access Token, their MongoDB cyphertext strings will look completely different, preventing attacker pattern matching.
 
 ---
 
-## 5. Deployment Map
+## 5. Deployment Mapping (Render + Vercel + Upstash)
 
-When we pushed the code to GitHub and deployed it, the architecture split into two cloud services:
+1. **Vercel**: Handles edge-delivery of the compiled `dist` React folder globally. Contains the `.env` pointer `VITE_API_URL` locking requests to Render.
+2. **Render**: The Node server constantly awaiting hits. Bootstraps secure HTTP-Only cookies using `app.set('trust proxy', 1)`.
+3. **Upstash**: A serverless Redis cloud. Configured to explicitly enforce TLS (rediss://) masking packet-sniffing cache grabs from Render to Upstash clusters.
 
-1. **Vercel (scrmail.vercel.app)**: Hosts the static React frontend. It only contains the HTML, CSS, and JS that runs in the user's browser.
-2. **Render (scrmail-api.onrender.com)**: Hosts your Node.js server 24/7.
-3. **MongoDB Atlas**: Hosts the database 24/7.
-
-When a user on `scrmail.vercel.app` searches for an email, their browser sends an HTTP request across the internet to `scrmail-api.onrender.com`. Render securely queries MongoDB Atlas and queries the official Google APIs, aggregates the data, and sends the final JSON payload back across the internet to Vercel for the user to see!
+This entire structural rewrite establishes **ScrMail** from a minimal viable project into a senior-level, highly scalable architecture capstone.
