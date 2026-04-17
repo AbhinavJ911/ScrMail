@@ -50,14 +50,10 @@ const errorHandler = (err, req, res, next) => {
     message = 'Token expired';
   }
 
-  // In production, hide internal error details (TEMPORARILY DISABLED FOR DEBUGGING)
-  // if (isProduction && statusCode === 500 && !(err instanceof ApiError)) {
-  //   message = 'Something went wrong. Please try again later.';
-  // }
-
-  try {
-    require('fs').appendFileSync('D:/Scrmail/backend/stack.log', new Date().toISOString() + '\\n' + String(err.stack) + '\\n\\n');
-  } catch (e) {}
+  // In production, hide internal error details
+  if (isProduction && statusCode === 500 && !(err instanceof ApiError)) {
+    message = 'Something went wrong. Please try again later.';
+  }
 
   // Send response
   const response = {

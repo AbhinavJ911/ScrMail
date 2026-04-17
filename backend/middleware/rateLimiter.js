@@ -1,4 +1,4 @@
-const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { rateLimit } = require('express-rate-limit');
 const RedisStore = require('rate-limit-redis').default;
 const { getRedisClient, getRedisStatus } = require('../config/redis');
 const logger = require('../utils/logger');
@@ -31,13 +31,6 @@ const createRateLimiter = ({ windowMs, max, message, prefix }) => {
     },
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
-    keyGenerator: (req) => {
-      // Use user ID if authenticated, otherwise use the IPv6-safe IP helper
-      if (req.user?._id) {
-        return req.user._id.toString();
-      }
-      return ipKeyGenerator(req);
-    },
     validate: { xForwardedForHeader: false }, // Disable validation warnings for proxy setups
   };
 
